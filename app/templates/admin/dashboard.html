@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Admin — {{ site_name }}{% endblock %}
+{% block content %}
+<div class="lobby-header">
+  <h1>Admin dashboard</h1>
+  <p>Operational overview</p>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px;">
+  <div class="wallet-card"><div style="color:var(--text-faint);font-size:0.8rem;">Total users</div><div class="wallet-balance" style="font-size:1.6rem;">{{ total_users }}</div></div>
+  <div class="wallet-card"><div style="color:var(--text-faint);font-size:0.8rem;">Pending KYC</div><div class="wallet-balance" style="font-size:1.6rem;">{{ pending_kyc }}</div></div>
+</div>
+
+<h3 style="font-family:var(--font-display);font-weight:600;">Recent transactions</h3>
+<table class="tx-table">
+  <thead><tr><th>Date</th><th>Type</th><th>Reference</th><th>Amount</th><th>Status</th></tr></thead>
+  <tbody>
+    {% for tx in recent_transactions %}
+    <tr>
+      <td>{{ tx.created_at.strftime('%d %b, %H:%M') }}</td>
+      <td>{{ tx.type|capitalize }}</td>
+      <td style="font-family:var(--font-mono);font-size:0.78rem;">{{ tx.reference }}</td>
+      <td>KES {{ '%.2f'|format(tx.amount) }}</td>
+      <td>{{ tx.status|capitalize }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
