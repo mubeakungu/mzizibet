@@ -1,4 +1,4 @@
-from flask import Flask, redirect, url_for
+from flask import Flask
 from config import config
 from app.extensions import db, login_manager, migrate, bcrypt
 
@@ -33,20 +33,16 @@ def create_app(config_name="default"):
 
     @app.context_processor
     def inject_globals():
-        return {"site_name": "Mzizibet"}
-
-    @app.route("/")
-    def index():
-        return redirect(url_for("sports.lobby"))
-
-    # Local dev convenience: auto-create SQLite tables on startup so the
-    # app runs with zero setup — no `flask db upgrade` needed just to
-    # browse the site. Production (Postgres/Render) should still use
-    # proper migrations via Flask-Migrate.
-    if app.config["SQLALCHEMY_DATABASE_URI"].startswith("sqlite"):
-        from app.models import wallet, casino, sports  # noqa: F401
-
-        with app.app_context():
-            db.create_all()
+        return {
+            "site_name": "Mzizibet",
+            "default_showcase_games": [
+                {"name": "Aviator", "badge": "HOT", "thumbnail_url": None},
+                {"name": "Fortune Tiger", "badge": "HOT", "thumbnail_url": None},
+                {"name": "Mines", "badge": "POPULAR", "thumbnail_url": None},
+                {"name": "Plinko", "badge": "HOT", "thumbnail_url": None},
+                {"name": "European Roulette", "badge": None, "thumbnail_url": None},
+                {"name": "Live Blackjack VIP", "badge": "HOT", "thumbnail_url": None},
+            ],
+        }
 
     return app
