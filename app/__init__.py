@@ -1,4 +1,5 @@
-from flask import Flask
+from flask import Flask, redirect, url_for
+from flask_login import current_user
 from config import config
 from app.extensions import db, login_manager, migrate, bcrypt
 
@@ -30,6 +31,12 @@ def create_app(config_name="default"):
     app.register_blueprint(sports_bp)
     app.register_blueprint(wallet_bp, url_prefix="/wallet")
     app.register_blueprint(admin_bp, url_prefix="/admin")
+
+    @app.route("/")
+    def index():
+        if current_user.is_authenticated:
+            return redirect(url_for("casino.lobby"))
+        return redirect(url_for("auth.login"))
 
     @app.context_processor
     def inject_globals():
