@@ -112,15 +112,21 @@ def _update_game_thumbnails():
 
 
 def _sync_sports_if_needed():
-    """Sync sports fixtures on app startup if database is empty or stale."""
+    """Sync sports fixtures on app startup if there's nothing upcoming yet.
+
+    SportsEvent has no created_at column, so "staleness" is judged by
+    whether we already hold any event kicking off in the future — not by
+    row age. New fixtures are deduped on provider_event_id."""
     import requests
     import os
-    from datetime import datetime, timedelta
+    from datetime import datetime
     from app.models.sports import SportsEvent, SportsMarket, SportsSelection
 
-    # Only sync if older than 1 hour
-    last_event = SportsEvent.query.order_by(SportsEvent.created_at.desc()).first()
-    if last_event and (datetime.utcnow() - last_event.created_at) < timedelta(hours=1):
+    # Skip the API call if we already have upcoming fixtures on file.
+    has_upcoming = SportsEvent.query.filter(
+        SportsEvent.kickoff_at >= datetime.utcnow()
+    ).first()
+    if has_upcoming:
         return
 
     API_KEY = os.environ.get("ODDS_API_KEY")
@@ -141,17 +147,18 @@ def _sync_sports_if_needed():
                 continue
 
             for fixture in response.json().get("events", []):
-                external_id = f"{sport_code}_{fixture['id']}"
-                if SportsEvent.query.filter_by(external_id=external_id).first():
+                provider_event_id = f"{sport_code}_{fixture['id']}"
+                if SportsEvent.query.filter_by(provider_event_id=provider_event_id).first():
                     continue
 
                 event = SportsEvent(
-                    external_id=external_id,
+                    provider_event_id=provider_event_id,
                     sport=sport_code.split("_")[0],
+                    league=sport_code,
                     home_team=fixture["home_team"],
                     away_team=fixture["away_team"],
-                    event_time=datetime.fromisoformat(fixture["commence_time"].replace("Z", "+00:00")),
-                    status="upcoming"
+                    kickoff_at=datetime.fromisoformat(fixture["commence_time"].replace("Z", "+00:00")),
+                    status="scheduled"
                 )
                 db.session.add(event)
                 db.session.flush()
@@ -167,10 +174,8 @@ def _sync_sports_if_needed():
                             for outcome in market.get("outcomes", []):
                                 sel = SportsSelection(
                                     market_id=market_obj.id,
-                                    name=outcome["name"],
-                                    selection_key=outcome["name"].lower().replace(" ", "_"),
+                                    label=outcome["name"],
                                     odds=float(outcome["price"]),
-                                    status="available"
                                 )
                                 db.session.add(sel)
 
@@ -222,8 +227,8 @@ def create_app(config_name="default"):
     # shell access to run `flask db upgrade` / `python seed.py` by hand. So
     # do it here, once, at startup. create_all() is a no-op for tables that
     # already exist, the seed check only inserts rows if the catalog is
-    # empty, and the sports sync only hits the API if data is missing or
-    # more than an hour old — so this is safe to run on every restart/deploy.
+    # empty, and the sports sync only hits the API if there's nothing
+    # upcoming on file — so this is safe to run on every restart/deploy.
     with app.app_context():
         db.create_all()
         _seed_catalog_if_empty()
