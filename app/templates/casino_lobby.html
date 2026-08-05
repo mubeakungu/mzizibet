@@ -1,30 +1,30 @@
 {% extends "base.html" %}
 {% block title %}Casino — {{ site_name }}{% endblock %}
 {% block content %}
-
 <div class="lobby-header">
   <h1>Casino Lobby</h1>
   <p>Choose a game and start playing</p>
 </div>
-
 <div class="lobby-controls">
   <a href="{{ url_for('casino.lobby', category='all') }}" class="cat-tab {{ 'active' if active_category == 'all' }}">All</a>
   {% for cat in categories %}
   <a href="{{ url_for('casino.lobby', category=cat.slug) }}" class="cat-tab {{ 'active' if active_category == cat.slug }}">{{ cat.name }}</a>
   {% endfor %}
-
   <form class="search-box" method="get" action="{{ url_for('casino.lobby') }}">
     <input type="hidden" name="category" value="{{ active_category }}">
     <input type="text" name="q" placeholder="Search games..." value="{{ search }}">
   </form>
 </div>
-
 <div class="game-grid">
   {% for game in games %}
   <a href="{{ url_for('casino.play', slug=game.slug) }}" class="game-card">
     <div class="game-thumb">
       {% if game.badge %}<span class="game-badge {{ game.badge|lower }}">{{ game.badge }}</span>{% endif %}
-      {{ game.name }}
+      {% if game.thumbnail_url %}
+        <img src="{{ game.thumbnail_url }}" alt="{{ game.name }}" class="game-image">
+      {% else %}
+        <div class="game-image-placeholder">{{ game.name }}</div>
+      {% endif %}
     </div>
     <div class="game-meta">
       <div class="game-name">{{ game.name }}</div>
@@ -36,4 +36,63 @@
   {% endfor %}
 </div>
 
+<style>
+.game-thumb {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 9 / 12;
+  overflow: hidden;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.game-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.3s ease;
+}
+
+.game-card:hover .game-image {
+  transform: scale(1.05);
+}
+
+.game-image-placeholder {
+  color: var(--text-faint);
+  text-align: center;
+  font-size: 14px;
+  padding: 20px;
+}
+
+.game-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 10;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.game-badge.hot {
+  background-color: #e74c3c;
+  color: white;
+}
+
+.game-badge.new {
+  background-color: #f39c12;
+  color: white;
+}
+
+.game-badge.popular {
+  background-color: #9b59b6;
+  color: white;
+}
+</style>
 {% endblock %}
