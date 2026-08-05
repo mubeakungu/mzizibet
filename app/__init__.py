@@ -3,6 +3,7 @@ from flask_login import current_user
 from config import config
 from app.extensions import db, login_manager, migrate, bcrypt
 
+
 def _seed_catalog_if_empty():
     """Populate game categories + catalog entries the first time the app
     boots against an empty database. Catalog data only (names, categories,
@@ -16,7 +17,7 @@ def _seed_catalog_if_empty():
 def _update_game_thumbnails():
     """Update existing games with thumbnail URLs on startup."""
     from app.models.casino import Game
-    
+
     GAME_IMAGES = {
         # Crash Games
         "aviator": "https://placehold.co/400x500?text=Aviator&font=raleway&bg=1a1a2e&textbg=0f3460",
@@ -31,7 +32,7 @@ def _update_game_thumbnails():
         "balloon-burst": "https://placehold.co/400x500?text=Balloon+Burst&font=raleway&bg=1a1a2e&textbg=e94560",
         "zeppelin": "https://placehold.co/400x500?text=Zeppelin&font=raleway&bg=16213e&textbg=0f3460",
         "comet-crash": "https://placehold.co/400x500?text=Comet+Crash&font=raleway&bg=0f3460&textbg=16213e",
-        
+
         # Table Games
         "plinko": "https://placehold.co/400x500?text=Plinko&font=raleway&bg=1a472a&textbg=2d5a3d",
         "dice": "https://placehold.co/400x500?text=Dice&font=raleway&bg=2d5a3d&textbg=1a472a",
@@ -47,7 +48,7 @@ def _update_game_thumbnails():
         "hi-lo": "https://placehold.co/400x500?text=Hi-Lo&font=raleway&bg=2d5a3d&textbg=1a472a",
         "keno": "https://placehold.co/400x500?text=Keno&font=raleway&bg=1a472a&textbg=2d5a3d",
         "video-poker": "https://placehold.co/400x500?text=Video+Poker&font=raleway&bg=2d5a3d&textbg=1a472a",
-        
+
         # Slots
         "golden-pharaoh": "https://placehold.co/400x500?text=Golden+Pharaoh&font=raleway&bg=4a3728&textbg=7a5c42",
         "spin-win": "https://placehold.co/400x500?text=Spin+%26+Win&font=raleway&bg=7a5c42&textbg=4a3728",
@@ -75,7 +76,7 @@ def _update_game_thumbnails():
         "wild-west-bounty": "https://placehold.co/400x500?text=Wild+West&font=raleway&bg=7a5c42&textbg=4a3728",
         "ocean-riches": "https://placehold.co/400x500?text=Ocean+Riches&font=raleway&bg=4a3728&textbg=7a5c42",
         "phoenix-fire": "https://placehold.co/400x500?text=Phoenix+Fire&font=raleway&bg=7a5c42&textbg=4a3728",
-        
+
         # Live Casino
         "neon-roulette": "https://placehold.co/400x500?text=Neon+Roulette&font=raleway&bg=2d1b4e&textbg=5a3a8a",
         "texas-holdem": "https://placehold.co/400x500?text=Texas+Holdem&font=raleway&bg=5a3a8a&textbg=2d1b4e",
@@ -87,7 +88,7 @@ def _update_game_thumbnails():
         "andar-bahar-live": "https://placehold.co/400x500?text=Andar+Bahar&font=raleway&bg=5a3a8a&textbg=2d1b4e",
         "live-dragon-tiger": "https://placehold.co/400x500?text=Dragon+Tiger&font=raleway&bg=2d1b4e&textbg=5a3a8a",
         "casino-holdem-live": "https://placehold.co/400x500?text=Casino+Holdem&font=raleway&bg=5a3a8a&textbg=2d1b4e",
-        
+
         # Jackpots
         "jackpot-city": "https://placehold.co/400x500?text=Jackpot+City&font=raleway&bg=4a2c1a&textbg=8b5a2b",
         "mega-millions-slots": "https://placehold.co/400x500?text=Mega+Millions&font=raleway&bg=8b5a2b&textbg=4a2c1a",
@@ -98,16 +99,90 @@ def _update_game_thumbnails():
         "super-jackpot-slots": "https://placehold.co/400x500?text=Super+Jackpot&font=raleway&bg=4a2c1a&textbg=8b5a2b",
         "vault-breaker": "https://placehold.co/400x500?text=Vault+Breaker&font=raleway&bg=8b5a2b&textbg=4a2c1a",
     }
-    
+
     updated = 0
     for slug, url in GAME_IMAGES.items():
         game = Game.query.filter_by(slug=slug).first()
         if game and not game.thumbnail_url:
             game.thumbnail_url = url
             updated += 1
-    
+
     if updated > 0:
         db.session.commit()
+
+
+def _sync_sports_if_needed():
+    """Sync sports fixtures on app startup if database is empty or stale."""
+    import requests
+    import os
+    from datetime import datetime, timedelta
+    from app.models.sports import SportsEvent, SportsMarket, SportsSelection
+
+    # Only sync if older than 1 hour
+    last_event = SportsEvent.query.order_by(SportsEvent.created_at.desc()).first()
+    if last_event and (datetime.utcnow() - last_event.created_at) < timedelta(hours=1):
+        return
+
+    API_KEY = os.environ.get("ODDS_API_KEY")
+    if not API_KEY:
+        return
+
+    SPORTS = ["soccer_epl", "basketball_nba", "tennis_atp"]
+    total = 0
+
+    for sport_code in SPORTS:
+        try:
+            response = requests.get(
+                f"https://api.the-odds-api.com/v4/sports/{sport_code}/events",
+                params={"apiKey": API_KEY, "daysFrom": 7},
+                timeout=10
+            )
+            if response.status_code != 200:
+                continue
+
+            for fixture in response.json().get("events", []):
+                external_id = f"{sport_code}_{fixture['id']}"
+                if SportsEvent.query.filter_by(external_id=external_id).first():
+                    continue
+
+                event = SportsEvent(
+                    external_id=external_id,
+                    sport=sport_code.split("_")[0],
+                    home_team=fixture["home_team"],
+                    away_team=fixture["away_team"],
+                    event_time=datetime.fromisoformat(fixture["commence_time"].replace("Z", "+00:00")),
+                    status="upcoming"
+                )
+                db.session.add(event)
+                db.session.flush()
+
+                # Add odds from bookmakers
+                for bookie in fixture.get("bookmakers", [])[:1]:
+                    for market in bookie.get("markets", []):
+                        if market["key"] == "h2h":
+                            market_obj = SportsMarket(event_id=event.id, market_type="h2h")
+                            db.session.add(market_obj)
+                            db.session.flush()
+
+                            for outcome in market.get("outcomes", []):
+                                sel = SportsSelection(
+                                    market_id=market_obj.id,
+                                    name=outcome["name"],
+                                    selection_key=outcome["name"].lower().replace(" ", "_"),
+                                    odds=float(outcome["price"]),
+                                    status="available"
+                                )
+                                db.session.add(sel)
+
+                total += 1
+
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+    if total > 0:
+        print(f"✓ Synced {total} sports fixtures")
+
 
 def create_app(config_name="default"):
     app = Flask(__name__)
@@ -116,6 +191,7 @@ def create_app(config_name="default"):
     login_manager.init_app(app)
     migrate.init_app(app, db)
     bcrypt.init_app(app)
+
     # Import every model module so SQLAlchemy knows about all tables before
     # create_all() runs below.
     from app.models.user import User
@@ -124,9 +200,11 @@ def create_app(config_name="default"):
     from app.models.sports import (  # noqa: F401
         SportsEvent, SportsMarket, SportsSelection, BetSlip, BetSlipLeg, Bet,
     )
+
     @login_manager.user_loader
     def load_user(user_id):
         return User.query.get(int(user_id))
+
     # Blueprints
     from app.routes.auth import auth_bp
     from app.routes.casino import casino_bp
@@ -138,21 +216,26 @@ def create_app(config_name="default"):
     app.register_blueprint(sports_bp)
     app.register_blueprint(wallet_bp, url_prefix="/wallet")
     app.register_blueprint(admin_bp, url_prefix="/admin")
-    # --- Auto-create tables + seed catalog data ---------------------------
+
+    # --- Auto-create tables + seed catalog data + sync live sports --------
     # No Flask-Migrate migrations exist yet, and Render's free tier gives no
     # shell access to run `flask db upgrade` / `python seed.py` by hand. So
     # do it here, once, at startup. create_all() is a no-op for tables that
-    # already exist, and the seed check only inserts rows if the catalog is
-    # empty, so this is safe to run on every restart/deploy.
+    # already exist, the seed check only inserts rows if the catalog is
+    # empty, and the sports sync only hits the API if data is missing or
+    # more than an hour old — so this is safe to run on every restart/deploy.
     with app.app_context():
         db.create_all()
         _seed_catalog_if_empty()
-        _update_game_thumbnails()  # ← ADD THIS LINE
+        _update_game_thumbnails()
+        _sync_sports_if_needed()
+
     @app.route("/")
     def index():
         if current_user.is_authenticated:
             return redirect(url_for("casino.lobby"))
         return redirect(url_for("auth.login"))
+
     @app.context_processor
     def inject_globals():
         return {
@@ -166,4 +249,5 @@ def create_app(config_name="default"):
                 {"name": "Live Blackjack VIP", "badge": "HOT", "thumbnail_url": None},
             ],
         }
+
     return app
