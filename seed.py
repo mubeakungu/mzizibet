@@ -7,9 +7,6 @@ going live and update these rows with real provider_name/provider_game_code
 values.
 
 Run with: python seed.py
-
-NOTE: Make sure your Game model has an `image_url` field. If not, add:
-    image_url = db.Column(db.String(500), nullable=True)
 """
 from app.extensions import db
 from app.models.casino import GameCategory, Game
@@ -23,7 +20,7 @@ CATEGORIES = [
 ]
 
 GAMES = [
-    # Format: (name, slug, category, badge, rtp, image_url)
+    # Format: (name, slug, category, badge, rtp, thumbnail_url)
     
     # --- Crash Games (12) ---
     ("Aviator", "aviator", "crash", "HOT", None, "https://placehold.co/400x500?text=Aviator&font=raleway&bg=1a1a2e&textbg=0f3460"),
@@ -124,7 +121,7 @@ def run(force=False):
             db.session.flush()
         slug_to_cat[slug] = cat
 
-    for i, (name, slug, cat_slug, badge, rtp, image_url) in enumerate(GAMES):
+    for i, (name, slug, cat_slug, badge, rtp, thumbnail_url) in enumerate(GAMES):
         if Game.query.filter_by(slug=slug).first():
             continue
         db.session.add(Game(
@@ -133,7 +130,7 @@ def run(force=False):
             category_id=slug_to_cat[cat_slug].id,
             badge=badge,
             rtp_percent=rtp,
-            image_url=image_url,
+            thumbnail_url=thumbnail_url,
             display_order=i,
             is_active=True,
         ))
