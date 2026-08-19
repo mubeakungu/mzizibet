@@ -12,6 +12,64 @@ from app.models.casino import Game
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
 
 
+def _apply_referral_signup_bonus(new_user):
+    """If the registration form carried a ?ref= code and the referral
+    program is active, link the accounts and credit the referrer's wallet.
+    Any failure here is logged and swallowed — a referral bonus glitch
+    should never block someone from creating an account."""
+    ref_code = request.args.get("ref") or request.form.get("ref")
+    if not ref_code:
+        return
+    try:
+        from app.models.referral import ReferralCode, Referral, ReferralBonus, ReferralSettings
+        from app.models.wallet import Transaction
+        import uuid
+
+        settings = ReferralSettings.get()
+        if not settings.is_active:
+            return
+
+        code_row = ReferralCode.query.filter_by(code=ref_code).first()
+        if not code_row or code_row.user_id == new_user.id:
+            return
+
+        referral = Referral(referrer_id=code_row.user_id, referee_id=new_user.id)
+        db.session.add(referral)
+        db.session.flush()
+
+        if settings.signup_bonus and float(settings.signup_bonus) > 0:
+            referrer_wallet = Wallet.query.filter_by(user_id=code_row.user_id).first()
+            if referrer_wallet:
+                referrer_wallet.balance = float(referrer_wallet.balance) + float(settings.signup_bonus)
+                txn = Transaction(
+                    wallet_id=referrer_wallet.id,
+                    type="bonus",
+                    amount=settings.signup_bonus,
+                    balance_after=referrer_wallet.balance,
+                    reference=f"REF-{uuid.uuid4().hex[:10].upper()}",
+                    status="completed",
+                )
+                db.session.add(txn)
+                db.session.flush()
+                db.session.add(ReferralBonus(
+                    referral_id=referral.id, bonus_type="signup",
+                    amount=settings.signup_bonus, transaction_id=txn.id,
+                ))
+                db.session.commit()
+
+                from app.routes.notifications import notify
+                from app.services.messaging import send_templated
+                referrer = User.query.get(code_row.user_id)
+                notify(referrer.id, "Referral bonus earned",
+                       f"You earned KES {settings.signup_bonus} for referring {new_user.full_name}.",
+                       url="/referrals/")
+                send_templated("referral_bonus", referrer.phone_number, amount=settings.signup_bonus)
+                return
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
 def _get_showcase_games():
     return Game.query.filter_by(is_active=True).order_by(Game.display_order).limit(12).all()
 
@@ -73,6 +131,8 @@ def register():
         wallet = Wallet(user_id=user.id, balance=0)
         db.session.add(wallet)
         db.session.commit()
+
+        _apply_referral_signup_bonus(user)
 
         login_user(user)
         flash("Welcome to Mzizibet. Verify your ID to unlock withdrawals.", "success")
