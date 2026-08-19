@@ -182,6 +182,17 @@ def create_app(config_name="development"):
         from app.models.jetx_models import JetXGame, JetXBet, JetXStats  # noqa: F401
         from app.routes.hilocard_blueprint import HiLoRound, HiloBet, HiLoStats  # noqa: F401
         from app.routes.plinkomzizi_blueprint import PlinkoRound, PlinkoBet, PlinkoStats  # noqa: F401
+
+        # --- New feature-pack models (KYC, support, RBAC, referrals, CMS,
+        # notifications, gateway config) — all additive tables, no ALTER
+        # TABLE required on anything that already exists.
+        from app.models.kyc import KycDocument  # noqa: F401
+        from app.models.support import Ticket, TicketMessage  # noqa: F401
+        from app.models.rbac import Role  # noqa: F401
+        from app.models.referral import ReferralSettings, ReferralCode, Referral, ReferralBonus  # noqa: F401
+        from app.models.content import ContentPage  # noqa: F401
+        from app.models.notification import Notification, MessageTemplate  # noqa: F401
+        from app.models.gateway import PaymentGateway  # noqa: F401
         logger.info("✓ All models imported successfully")
     except Exception as e:
         logger.error(f"❌ Failed to import models: {e}")
@@ -199,14 +210,29 @@ def create_app(config_name="development"):
         from app.routes.sports import sports_bp
         from app.routes.wallet import wallet_bp
         from app.routes.admin import admin_bp
-        
+        from app.routes.kyc import kyc_bp
+        from app.routes.support import support_bp
+        from app.routes.referral import referral_bp
+        from app.routes.content import content_bp
+        from app.routes.notifications import notifications_bp
+
+        # admin_extra attaches extra routes onto admin_bp — must be
+        # imported BEFORE admin_bp is registered below, or those routes
+        # won't be picked up.
+        import app.routes.admin_extra  # noqa: F401
+
         app.register_blueprint(auth_bp)
         app.register_blueprint(casino_bp)
         app.register_blueprint(casino_games_bp, url_prefix="/api/casino")
         app.register_blueprint(sports_bp)
         app.register_blueprint(wallet_bp, url_prefix="/wallet")
         app.register_blueprint(admin_bp, url_prefix="/admin")
-        
+        app.register_blueprint(kyc_bp)
+        app.register_blueprint(support_bp)
+        app.register_blueprint(referral_bp)
+        app.register_blueprint(content_bp)
+        app.register_blueprint(notifications_bp)
+
         logger.info("✓ All main blueprints registered")
     except Exception as e:
         logger.error(f"❌ Failed to register blueprints: {e}")
@@ -279,6 +305,17 @@ def create_app(config_name="development"):
             _seed_catalog_if_empty()
             _update_game_thumbnails()
             _sync_sports_if_needed()
+
+            try:
+                from app.models.rbac import seed_default_roles
+                from app.models.notification import seed_default_templates
+                from app.models.gateway import seed_default_gateways
+                seed_default_roles()
+                seed_default_templates()
+                seed_default_gateways()
+                logger.info("✓ Feature-pack defaults seeded (roles, templates, gateways)")
+            except Exception as e:
+                logger.warning(f"⚠️  Could not seed feature-pack defaults: {e}")
     except Exception as e:
         logger.error(f"❌ Error initializing database: {e}")
         # Don't raise - app can still work even if seeding fails
@@ -313,6 +350,16 @@ def create_app(config_name="development"):
             {"icon": "⭐", "title": "10% Daily Cashback", "subtitle": "On crash & casino games"},
         ]
 
+        unread_notifications_count = 0
+        if current_user.is_authenticated:
+            try:
+                from app.models.notification import Notification
+                unread_notifications_count = Notification.query.filter_by(
+                    user_id=current_user.id, is_read=False
+                ).count()
+            except Exception as e:
+                logger.warning(f"⚠️  Error counting notifications: {e}")
+
         return {
             "site_name": "Mzizibet",
             "default_showcase_games": [
@@ -327,6 +374,7 @@ def create_app(config_name="development"):
             "sidebar_promotions": sidebar_promotions,
             "betslip_items": betslip_items,
             "betslip_total_odds": betslip_total_odds,
+            "unread_notifications_count": unread_notifications_count,
         }
 
     # Initialize scheduler
