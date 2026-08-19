@@ -27,6 +27,11 @@
     </nav>
     {% if current_user.is_authenticated %}
     <div class="topbar-right">
+      <a href="{{ url_for('referral.dashboard') }}" class="icon-link" title="Refer & Earn">🎁</a>
+      <a href="{{ url_for('support.list_tickets') }}" class="icon-link" title="Support">💬</a>
+      <a href="{{ url_for('notifications.list_all') }}" class="icon-link" title="Notifications" style="position: relative;">
+        🔔{% if unread_notifications_count %}<span style="position:absolute; top:-4px; right:-6px; background:var(--brick); color:#fff; font-size:0.65rem; border-radius:10px; padding:1px 5px;">{{ unread_notifications_count }}</span>{% endif %}
+      </a>
       <a href="{{ url_for('wallet.overview') }}" class="balance-pill">
         <span class="balance-label">Balance</span>
         <span class="balance-amount">KES {{ '%.2f'|format(current_user.wallet.balance) }}</span>
