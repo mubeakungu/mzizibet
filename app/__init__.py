@@ -219,7 +219,15 @@ def create_app(config_name="development"):
         # admin_extra attaches extra routes onto admin_bp — must be
         # imported BEFORE admin_bp is registered below, or those routes
         # won't be picked up.
-        import app.routes.admin_extra  # noqa: F401
+        #
+        # NOTE: must be `from app.routes import admin_extra`, NOT
+        # `import app.routes.admin_extra` — the latter binds the name
+        # `app` in this local scope to the top-level `app` package,
+        # silently shadowing the Flask instance variable `app` created
+        # earlier in this function. Every app.register_blueprint(...)
+        # call after that point then fails with:
+        #   AttributeError: module 'app' has no attribute 'register_blueprint'
+        from app.routes import admin_extra  # noqa: F401
 
         app.register_blueprint(auth_bp)
         app.register_blueprint(casino_bp)
