@@ -65,7 +65,7 @@ def init_scheduler(app):
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
         from apscheduler.triggers.interval import IntervalTrigger
-        
+
         scheduler = BackgroundScheduler()
 
         # Configure scheduler
@@ -101,7 +101,7 @@ def init_scheduler(app):
         logger.info("  • Live scores: Every 5 minutes")
         logger.info("  • Upcoming fixtures: Every 6 hours")
         logger.info("=" * 50)
-        
+
         return scheduler
     except ImportError:
         logger.warning("⚠️  APScheduler not available, background jobs disabled")
@@ -145,9 +145,9 @@ def sync_upcoming_fixtures_job(app):
 
 def create_app(config_name="development"):
     """Application factory with error handling"""
-    
+
     logger.info(f"Creating Flask app with config: {config_name}")
-    
+
     try:
         app = Flask(__name__)
         app.config.from_object(config[config_name])
@@ -219,7 +219,15 @@ def create_app(config_name="development"):
         # admin_extra attaches extra routes onto admin_bp — must be
         # imported BEFORE admin_bp is registered below, or those routes
         # won't be picked up.
-        import app.routes.admin_extra  # noqa: F401
+        #
+        # NOTE: must be `from app.routes import admin_extra`, NOT
+        # `import app.routes.admin_extra` — the latter binds the name
+        # `app` in this local scope to the top-level `app` package,
+        # silently shadowing the Flask instance variable `app` created
+        # earlier in this function. Every app.register_blueprint(...)
+        # call after that point then fails with:
+        #   AttributeError: module 'app' has no attribute 'register_blueprint'
+        from app.routes import admin_extra  # noqa: F401
 
         app.register_blueprint(auth_bp)
         app.register_blueprint(casino_bp)
@@ -301,7 +309,7 @@ def create_app(config_name="development"):
             logger.info("Creating database tables...")
             db.create_all()
             logger.info("✓ Database tables created")
-            
+
             _seed_catalog_if_empty()
             _update_game_thumbnails()
             _sync_sports_if_needed()
